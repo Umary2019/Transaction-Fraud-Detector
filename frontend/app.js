@@ -3,11 +3,13 @@
    AI fraud detection frontend for Nigerian transactions with admin security.
 ───────────────────────────────────────────────────────────────────────────── */
 
-const API_ROOT   = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.port === '5500')
+const API_ROOT   = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.port === '5500' || window.location.port === '8000')
                     ? 'http://localhost:8000/api/v1'
                     : '/api/v1';
 const API_URL    = `${API_ROOT}/predict`;
 const HEALTH_URL = `${API_ROOT}/health`;
+
+console.log("🛠️ Gojo Sentinel API Root:", API_ROOT);
 
 const NIGERIAN_BANKS = [
     'GTBank','Zenith Bank','Access Bank','UBA','First Bank',
