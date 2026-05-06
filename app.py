@@ -632,9 +632,16 @@ async def health_check():
         total_predictions=total
     )
 
+@app.get("/ping")
+async def ping():
+    return {"status": "ok", "message": "Gojo Sentinel is alive"}
+
 # ─── Frontend Serving ───────────────────────────────────────────────────────────
-# Mount frontend files (index.html will be served at / automatically)
-app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+# Mount frontend files safely
+if os.path.exists("frontend"):
+    app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+else:
+    print("[WARN] frontend directory not found. Static files will not be served.")
 
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
