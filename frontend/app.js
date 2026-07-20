@@ -909,6 +909,21 @@ function logTerminal(msg, type = 'INFO') {
     term.scrollTop = term.scrollHeight;
 }
 
+function highlightFlowStep(stepNum, statusText, colorVar = '--accent') {
+    const el = document.getElementById(`flowStep${stepNum}`);
+    const sub = document.getElementById(`flowStep${stepNum}Sub`);
+    if (el) {
+        el.style.border = `2px solid var(${colorVar})`;
+        el.style.boxShadow = `0 0 15px rgba(6,182,212,0.25)`;
+        el.style.background = `rgba(6,182,212,0.06)`;
+    }
+    if (sub && statusText) {
+        sub.textContent = statusText;
+        sub.style.color = `var(${colorVar})`;
+        sub.style.fontWeight = '700';
+    }
+}
+
 function streamBatchExecutionLogs(filename) {
     const pBar = document.getElementById('batchProgressBar');
     const pPercent = document.getElementById('batchProgressPercent');
@@ -917,12 +932,13 @@ function streamBatchExecutionLogs(filename) {
 
     if (term) term.innerHTML = '';
     logTerminal(`Ingesting CSV dataset: ${filename}`, 'SYS');
+    highlightFlowStep(1, '⏳ Ingesting CSV...', '--accent');
 
     const steps = [
-        { pct: 20, stage: 'Ingesting CSV File...', log: `Reading binary stream for ${filename}`, delay: 200 },
-        { pct: 45, stage: 'Parsing & Standardizing Schema...', log: `Validating transaction columns (Amount, Channel, Banks)...`, delay: 500 },
-        { pct: 70, stage: 'Screening CBN Banking Limits (USSD ₦100k, NIP ₦5M)...', log: `Evaluating Nigerian Banking Compliance Rules...`, delay: 900 },
-        { pct: 90, stage: 'Executing XGBoost AI Model Scoring...', log: `Running vector matrix inference across XGBoost model...`, delay: 1300 }
+        { pct: 25, stage: 'Step 1: Reading CSV Stream...', log: `Reading binary stream for ${filename}`, step: 1, text: '✓ Ingesting Stream', col: '--accent', delay: 200 },
+        { pct: 50, stage: 'Step 2: Screening Nigerian Banking Limits...', log: `Evaluating CBN USSD ₦100k & NIP ₦5M rules...`, step: 2, text: '⏳ Screening Rules', col: '--yellow', delay: 600 },
+        { pct: 75, stage: 'Step 3: Scoring with XGBoost AI Model...', log: `Running vector matrix inference across AI model...`, step: 3, text: '⏳ AI Scoring', col: '--purple', delay: 1000 },
+        { pct: 95, stage: 'Step 4: Computing Final Risk Verdicts...', log: `Assigning Allow / Review / Block verdicts...`, step: 4, text: '⏳ Finalizing Verdicts', col: '--green', delay: 1400 }
     ];
 
     steps.forEach((s) => {
@@ -930,7 +946,8 @@ function streamBatchExecutionLogs(filename) {
             if (pBar) pBar.style.width = `${s.pct}%`;
             if (pPercent) pPercent.textContent = `${s.pct}%`;
             if (pStage) pStage.textContent = s.stage;
-            logTerminal(s.log, s.pct === 70 ? 'WARN' : 'INFO');
+            logTerminal(s.log, s.step === 2 ? 'WARN' : 'INFO');
+            highlightFlowStep(s.step, s.text, s.col);
         }, s.delay);
     });
 }
@@ -938,6 +955,12 @@ function streamBatchExecutionLogs(filename) {
 function renderBatchResults(data) {
     const resultsView = document.getElementById('batchResultsView');
     if (!resultsView || !data) return;
+
+    // Update Step Flow visualizer live badges with final dataset audit totals
+    highlightFlowStep(1, `✓ ${data.total_transactions} Rows Loaded`, '--accent');
+    highlightFlowStep(2, `✓ ${data.top_violations ? data.top_violations.length : 0} Rule Types Breached`, '--yellow');
+    highlightFlowStep(3, `✓ XGBoost Scored`, '--purple');
+    highlightFlowStep(4, `✓ Audit Report Ready`, '--green');
     resultsView.classList.remove('hidden');
 
     // Stats Cards
