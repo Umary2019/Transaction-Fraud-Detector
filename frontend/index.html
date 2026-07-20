@@ -21,18 +21,8 @@
         <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <div class="logo brand-logo-wrap">
-                    <div class="brand-icon-svg">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                            <path d="M12 8v4"></path>
-                            <path d="M12 16h.01"></path>
-                        </svg>
-                    </div>
-                    <div class="brand-text">
-                        <span class="brand-name">GOJO <span style="color: var(--accent);">SENTINEL</span></span>
-                        <span class="brand-sub">AI Fraud Defense</span>
-                    </div>
+                <div class="logo">
+                    <img src="logo_final.png" alt="Gojo Sentinel" class="logo-img">
                 </div>
             </div>
 
@@ -649,10 +639,25 @@
                         <input type="file" id="batchCsvInput" accept=".csv, .txt" class="hidden">
                     </div>
 
-                    <!-- Processing Loader -->
-                    <div id="batchLoading" class="state-container hidden" style="min-height: 180px;">
-                        <div class="spinner-ring"></div>
-                        <div class="loading-text">Screening Dataset against Nigerian Banking Rules & AI Model...</div>
+                    <!-- Processing Loader (Live Execution Terminal & Progress Bar) -->
+                    <div id="batchLoading" class="hidden" style="margin-top: 1.5rem; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                <div class="spinner-ring" style="width: 22px; height: 22px; border-width: 2px;"></div>
+                                <span style="font-weight: 700; color: var(--accent); font-size: 0.9rem;" id="batchProgressStage">Initializing Execution Pipeline...</span>
+                            </div>
+                            <span style="font-weight: 700; color: var(--text-primary); font-size: 0.9rem;" id="batchProgressPercent">0%</span>
+                        </div>
+
+                        <!-- Progress Bar -->
+                        <div style="width: 100%; height: 8px; background: var(--bg-elevated); border-radius: 4px; overflow: hidden; margin-bottom: 1rem;">
+                            <div id="batchProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent), var(--purple)); transition: width 0.3s ease;"></div>
+                        </div>
+
+                        <!-- Live Terminal Console -->
+                        <div style="background: #04070d; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 0.85rem; font-family: monospace; font-size: 0.78rem; height: 120px; overflow-y: auto; color: #a3e635; display: flex; flex-direction: column; gap: 0.3rem;" id="batchTerminalLog">
+                            <div><span style="color: var(--text-muted);">[SYSTEM]</span> Pipeline ready for dataset ingestion...</div>
+                        </div>
                     </div>
                 </div>
 
@@ -809,13 +814,7 @@
         <div class="modal-backdrop" style="backdrop-filter: blur(8px);"></div>
         <div class="modal-content glass-panel" id="loginModalContent">
             <div class="text-center" style="text-align: center; margin-bottom: 1.5rem;">
-                <div class="login-brand-icon">
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                        <path d="M12 8v4"></path>
-                        <path d="M12 16h.01"></path>
-                    </svg>
-                </div>
+                <img src="logo_final.png" alt="Gojo Sentinel" class="login-logo">
             </div>
             <h2 class="panel-title" style="justify-content:center;">System Locked</h2>
             <p style="text-align:center; margin-bottom:1.5rem; color:var(--text-sec); font-size: 0.9rem;">Please

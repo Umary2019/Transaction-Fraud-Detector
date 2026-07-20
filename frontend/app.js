@@ -859,24 +859,80 @@ async function handleBatchFileUpload(file) {
         const formData = new FormData();
         formData.append('file', file);
         
-        const response = await fetch(`${API_ROOT}/batch-predict`, {
+        // Start live terminal & progress animation
+        const fetchPromise = fetch(`${API_ROOT}/batch-predict`, {
             method: 'POST',
             body: formData
         });
-        
+
+        streamBatchExecutionLogs(file.name);
+
+        const response = await fetchPromise;
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
             throw new Error(err.detail || 'Batch processing failed.');
         }
         
         batchData = await response.json();
-        renderBatchResults(batchData);
+        
+        // Final log & render
+        logTerminal(`Execution Finished! Processed ${batchData.total_transactions} records.`, 'SUCCESS');
+        const pBar = document.getElementById('batchProgressBar');
+        const pPercent = document.getElementById('batchProgressPercent');
+        const pStage = document.getElementById('batchProgressStage');
+        if (pBar) pBar.style.width = '100%';
+        if (pPercent) pPercent.textContent = '100%';
+        if (pStage) pStage.textContent = 'Screening Complete!';
+
+        setTimeout(() => {
+            if (loading) loading.classList.add('hidden');
+            if (dropzone) dropzone.classList.remove('hidden');
+            renderBatchResults(batchData);
+        }, 1200);
+
     } catch (e) {
+        logTerminal(`ERROR: ${e.message}`, 'ERROR');
         alert(`Batch Upload Error: ${e.message}`);
-    } finally {
         if (loading) loading.classList.add('hidden');
         if (dropzone) dropzone.classList.remove('hidden');
     }
+}
+
+function logTerminal(msg, type = 'INFO') {
+    const term = document.getElementById('batchTerminalLog');
+    if (!term) return;
+    const time = new Date().toISOString().slice(11, 19);
+    const color = type === 'ERROR' ? '#ef4444' : type === 'WARN' ? '#f59e0b' : type === 'SUCCESS' ? '#10b981' : type === 'SYS' ? '#06b6d4' : '#a3e635';
+    const line = document.createElement('div');
+    line.innerHTML = `<span style="color: var(--text-muted);">[${time}]</span> <span style="color:${color}; font-weight:600;">[${type}]</span> ${msg}`;
+    term.appendChild(line);
+    term.scrollTop = term.scrollHeight;
+}
+
+function streamBatchExecutionLogs(filename) {
+    const pBar = document.getElementById('batchProgressBar');
+    const pPercent = document.getElementById('batchProgressPercent');
+    const pStage = document.getElementById('batchProgressStage');
+    const term = document.getElementById('batchTerminalLog');
+
+    if (term) term.innerHTML = '';
+    logTerminal(`Ingesting CSV dataset: ${filename}`, 'SYS');
+
+    const steps = [
+        { pct: 20, stage: 'Ingesting CSV File...', log: `Reading binary stream for ${filename}`, delay: 200 },
+        { pct: 45, stage: 'Parsing & Standardizing Schema...', log: `Validating transaction columns (Amount, Channel, Banks)...`, delay: 500 },
+        { pct: 70, stage: 'Screening CBN Banking Limits (USSD ₦100k, NIP ₦5M)...', log: `Evaluating Nigerian Banking Compliance Rules...`, delay: 900 },
+        { pct: 90, stage: 'Executing XGBoost AI Model Scoring...', log: `Running vector matrix inference across XGBoost model...`, delay: 1300 }
+    ];
+
+    steps.forEach((s) => {
+        setTimeout(() => {
+            if (pBar) pBar.style.width = `${s.pct}%`;
+            if (pPercent) pPercent.textContent = `${s.pct}%`;
+            if (pStage) pStage.textContent = s.stage;
+            logTerminal(s.log, s.pct === 70 ? 'WARN' : 'INFO');
+        }, s.delay);
+    });
 }
 
 function renderBatchResults(data) {
