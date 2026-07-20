@@ -963,6 +963,23 @@ function renderBatchResults(data) {
     highlightFlowStep(4, `✓ Audit Report Ready`, '--green');
     resultsView.classList.remove('hidden');
 
+    // Update 30-Day Activity Trend Chart with Batch Dataset Trends
+    if (riskChartInstance && data.risk_distribution) {
+        const goodDataset = riskChartInstance.data.datasets[0].data;
+        const fraudDataset = riskChartInstance.data.datasets[1].data;
+        const approvedCount = data.risk_distribution['Low'] || 0;
+        const fraudCount = (data.risk_distribution['High'] || 0) + (data.risk_distribution['Critical'] || 0);
+
+        goodDataset[goodDataset.length - 1] = approvedCount;
+        fraudDataset[fraudDataset.length - 1] = fraudCount;
+        riskChartInstance.update();
+
+        const badge = document.getElementById('trendBadge');
+        if (badge) {
+            badge.textContent = `📈 Batch Trend Active: ${approvedCount.toLocaleString()} Safe / ${fraudCount.toLocaleString()} Risk`;
+        }
+    }
+
     // Stats Cards
     const totalEl = document.getElementById('batchTotalCount');
     const appVolEl = document.getElementById('batchApprovedVol');
