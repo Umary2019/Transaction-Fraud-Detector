@@ -104,7 +104,7 @@ body {
 }
 
 .sidebar {
-    width: 280px;
+    width: 260px;
     background: var(--bg-surface);
     border-right: 1px solid var(--border);
     display: flex;
@@ -113,19 +113,70 @@ body {
     top: 0;
     height: 100vh;
     z-index: 100;
-    transition: margin-left var(--dur) var(--ease), transform var(--dur) var(--ease);
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
 }
+
 .sidebar.collapsed {
-    margin-left: -280px;
-    transform: translateX(-100%);
+    width: 72px;
+    margin-left: 0;
+    transform: none;
+}
+
+.sidebar.collapsed .sidebar-header {
+    padding: 1.25rem 0.5rem;
+}
+
+.sidebar.collapsed .logo-img {
+    height: 44px;
+    width: 44px;
+    box-shadow: 0 0 15px var(--accent-glow);
+}
+
+.sidebar.collapsed .sidebar-nav {
+    padding: 1rem 0.5rem;
+    align-items: center;
+}
+
+.sidebar.collapsed .nav-item {
+    justify-content: center;
+    padding: 0;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+}
+
+.sidebar.collapsed .nav-text {
+    display: none !important;
+}
+
+.sidebar.collapsed .sidebar-footer {
+    padding: 1rem 0.5rem;
+    align-items: center;
+}
+
+.sidebar.collapsed .status-label,
+.sidebar.collapsed .user-info,
+.sidebar.collapsed #loginWrapper,
+.sidebar.collapsed #logoutBtn {
+    display: none !important;
+}
+
+.sidebar.collapsed .user-card {
+    padding: 0.5rem;
+    align-items: center;
+    border: none;
+    background: transparent;
+    box-shadow: none;
 }
 
 .sidebar-header {
-    padding: 3rem 1rem;
+    padding: 2.5rem 1rem;
     border-bottom: 1px solid var(--border-soft);
     display: flex;
     justify-content: center;
     align-items: center;
+    transition: padding 0.3s var(--ease);
 }
 
 .logo {
