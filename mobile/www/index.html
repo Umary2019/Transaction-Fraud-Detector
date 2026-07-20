@@ -63,6 +63,12 @@
                     </svg>
                     Rules
                 </a>
+                <a href="#" class="nav-item" id="nav-batch" data-page="batch">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                    </svg>
+                    Batch Scanner
+                </a>
                 <a href="#" class="nav-item hidden" id="nav-users" data-page="users">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                         <path
@@ -545,6 +551,143 @@
                                 <button type="submit" class="btn btn-primary w-full mt-3">Deploy Rule</button>
                                 <div class="form-message" id="ruleMessage"></div>
                             </form>
+                        </div>
+                    </div>
+            </section>
+
+            <!-- Batch Scanner & Data Flow Page -->
+            <section id="page-batch" class="page-section hidden">
+                <div class="glass-panel" style="margin-bottom: 1.5rem;">
+                    <div class="history-header" style="margin-bottom: 0.5rem;">
+                        <h2 class="panel-title" style="margin-bottom: 0;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                            </svg>
+                            Batch Dataset Screening & Data Flow Pipeline
+                        </h2>
+                    </div>
+                    <p class="panel-note">Upload a transaction dataset (CSV) to execute bulk screening against Nigerian Banking Compliance Rules and the XGBoost AI Fraud Model.</p>
+                    
+                    <!-- Step Flow Visualizer -->
+                    <div class="data-flow-container" style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1.5rem 0; flex-wrap: wrap;">
+                        <div class="flow-step" style="flex:1; min-width: 140px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; text-align: center;">
+                            <div style="font-size: 1.4rem; color: var(--accent); font-weight: 700;">📁 Step 1</div>
+                            <strong style="display: block; margin-top: 0.25rem;">CSV Ingestion</strong>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">Raw Transaction Data</span>
+                        </div>
+                        <div style="font-size: 1.2rem; color: var(--accent); font-weight: 700;">➔</div>
+                        <div class="flow-step" style="flex:1; min-width: 140px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; text-align: center;">
+                            <div style="font-size: 1.4rem; color: var(--yellow); font-weight: 700;">🇳🇬 Step 2</div>
+                            <strong style="display: block; margin-top: 0.25rem;">Banking Rules</strong>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">USSD/NIP CBN Limits</span>
+                        </div>
+                        <div style="font-size: 1.2rem; color: var(--accent); font-weight: 700;">➔</div>
+                        <div class="flow-step" style="flex:1; min-width: 140px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; text-align: center;">
+                            <div style="font-size: 1.4rem; color: var(--purple); font-weight: 700;">🤖 Step 3</div>
+                            <strong style="display: block; margin-top: 0.25rem;">AI Fraud Model</strong>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">XGBoost Scoring</span>
+                        </div>
+                        <div style="font-size: 1.2rem; color: var(--accent); font-weight: 700;">➔</div>
+                        <div class="flow-step" style="flex:1; min-width: 140px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; text-align: center;">
+                            <div style="font-size: 1.4rem; color: var(--green); font-weight: 700;">📊 Step 4</div>
+                            <strong style="display: block; margin-top: 0.25rem;">Risk Verdict</strong>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">Allow / Review / Block</span>
+                        </div>
+                    </div>
+
+                    <!-- Dropzone -->
+                    <div id="batchDropzone" class="dropzone-box" style="border: 2px dashed var(--accent); border-radius: var(--radius-lg); padding: 2.5rem 1.5rem; text-align: center; background: rgba(6, 182, 212, 0.03); cursor: pointer; transition: all 0.3s ease;">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 1rem;">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        <h3 style="font-size: 1.1rem; color: var(--text-primary); margin-bottom: 0.5rem;">Drag & Drop Transaction Dataset (.csv) Here</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem;">Supports standard banking transaction columns (Amount, Channel, Sender Bank, Receiver Bank, Timestamp)</p>
+                        <button class="btn btn-primary" id="selectBatchCsvBtn" type="button">Select CSV File</button>
+                        <input type="file" id="batchCsvInput" accept=".csv, .txt" class="hidden">
+                    </div>
+
+                    <!-- Processing Loader -->
+                    <div id="batchLoading" class="state-container hidden" style="min-height: 180px;">
+                        <div class="spinner-ring"></div>
+                        <div class="loading-text">Screening Dataset against Nigerian Banking Rules & AI Model...</div>
+                    </div>
+                </div>
+
+                <!-- Batch Results View (Hidden until upload) -->
+                <div id="batchResultsView" class="hidden">
+                    <!-- Summary Stats Grid -->
+                    <div class="header-stats" style="margin-bottom: 1.5rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                        <div class="stat-pill">
+                            <span class="stat-number" id="batchTotalCount">0</span>
+                            <span class="stat-desc">Total Records</span>
+                        </div>
+                        <div class="stat-pill" style="border-color: rgba(16, 185, 129, 0.4);">
+                            <span class="stat-number" style="color: var(--green);" id="batchApprovedVol">₦0</span>
+                            <span class="stat-desc">Approved Volume (₦)</span>
+                        </div>
+                        <div class="stat-pill warning">
+                            <span class="stat-number" id="batchReviewCount">0</span>
+                            <span class="stat-desc">Review Required</span>
+                        </div>
+                        <div class="stat-pill" style="border-color: rgba(239, 68, 68, 0.4);">
+                            <span class="stat-number" style="color: var(--red);" id="batchBlockedCount">0</span>
+                            <span class="stat-desc">Blocked / Fraudulent</span>
+                        </div>
+                    </div>
+
+                    <!-- Charts Grid -->
+                    <div class="dashboard-grid" style="margin-bottom: 1.5rem;">
+                        <!-- Risk Breakdown Panel -->
+                        <div class="glass-panel">
+                            <h3 class="panel-title">Risk Classification Breakdown</h3>
+                            <div style="position: relative; height: 220px;">
+                                <canvas id="batchPieChart"></canvas>
+                            </div>
+                        </div>
+                        <!-- Top Rule Violations -->
+                        <div class="glass-panel">
+                            <h3 class="panel-title">Top Compliance & Banking Violations</h3>
+                            <div id="topViolationsList" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 220px; overflow-y: auto;">
+                                <div style="color: var(--text-muted); font-size: 0.85rem; font-style: italic;">No rule violations detected in this batch.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Batch Transactions Table -->
+                    <div class="glass-panel">
+                        <div class="history-header">
+                            <h2 class="panel-title" style="margin-bottom: 0;">Audited Dataset Results</h2>
+                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                <select id="batchFilterRisk" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; width: auto; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); border-radius: var(--radius-sm);">
+                                    <option value="ALL">All Risk Levels</option>
+                                    <option value="LOW">Low Risk (Approved)</option>
+                                    <option value="MEDIUM">Medium Risk (Review)</option>
+                                    <option value="HIGH">High Risk (Declined)</option>
+                                    <option value="CRITICAL">Critical Risk (Blocked)</option>
+                                </select>
+                                <button class="btn btn-primary btn-sm" id="exportBatchCsvBtn">Export Audited CSV</button>
+                            </div>
+                        </div>
+                        <div class="history-table-wrap">
+                            <table class="history-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Txn ID</th>
+                                        <th>Amount (₦)</th>
+                                        <th>Channel</th>
+                                        <th>Sender Bank</th>
+                                        <th>Receiver Bank</th>
+                                        <th>Risk Score</th>
+                                        <th>Verdict</th>
+                                        <th>Compliance Violations</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="batchTableBody">
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>

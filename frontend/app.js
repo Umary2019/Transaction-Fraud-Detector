@@ -801,7 +801,229 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // Batch Drag & Drop + File Selector Listeners
+    const dropzone = document.getElementById('batchDropzone');
+    const batchInput = document.getElementById('batchCsvInput');
+    const selectBtn = document.getElementById('selectBatchCsvBtn');
+
+    if (dropzone && batchInput) {
+        selectBtn.addEventListener('click', () => batchInput.click());
+        batchInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                handleBatchFileUpload(e.target.files[0]);
+            }
+        });
+
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.style.background = 'rgba(6, 182, 212, 0.1)';
+        });
+        dropzone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropzone.style.background = 'rgba(6, 182, 212, 0.03)';
+        });
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.style.background = 'rgba(6, 182, 212, 0.03)';
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleBatchFileUpload(e.dataTransfer.files[0]);
+            }
+        });
+    }
+
+    const exportBtn = document.getElementById('exportBatchCsvBtn');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', exportBatchResultsCsv);
+    }
+
     // Initial health check and interval
     checkHealth();
     setInterval(checkHealth, 10000);
 });
+
+// ─── Batch Dataset Scanner Functions ──────────────────────────────────────────
+let batchData = null;
+let batchPieChartInstance = null;
+
+async function handleBatchFileUpload(file) {
+    if (!file) return;
+    const dropzone = document.getElementById('batchDropzone');
+    const loading = document.getElementById('batchLoading');
+    const resultsView = document.getElementById('batchResultsView');
+    
+    if (dropzone) dropzone.classList.add('hidden');
+    if (loading) loading.classList.remove('hidden');
+    if (resultsView) resultsView.classList.add('hidden');
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch(`${API_ROOT}/batch-predict`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || 'Batch processing failed.');
+        }
+        
+        batchData = await response.json();
+        renderBatchResults(batchData);
+    } catch (e) {
+        alert(`Batch Upload Error: ${e.message}`);
+    } finally {
+        if (loading) loading.classList.add('hidden');
+        if (dropzone) dropzone.classList.remove('hidden');
+    }
+}
+
+function renderBatchResults(data) {
+    const resultsView = document.getElementById('batchResultsView');
+    if (!resultsView || !data) return;
+    resultsView.classList.remove('hidden');
+
+    // Stats Cards
+    const totalEl = document.getElementById('batchTotalCount');
+    const appVolEl = document.getElementById('batchApprovedVol');
+    const revEl = document.getElementById('batchReviewCount');
+    const blkEl = document.getElementById('batchBlockedCount');
+
+    if (totalEl) totalEl.textContent = data.total_transactions.toLocaleString();
+    if (appVolEl) appVolEl.textContent = '₦' + fmt(data.approved_volume_ngn);
+    if (revEl) revEl.textContent = data.review_count.toLocaleString();
+    if (blkEl) blkEl.textContent = data.blocked_count.toLocaleString();
+
+    // Pie Chart
+    renderBatchPieChart(data.risk_distribution);
+
+    // Top Rule Violations
+    const listEl = document.getElementById('topViolationsList');
+    if (listEl) {
+        if (!data.top_violations || data.top_violations.length === 0) {
+            listEl.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; font-style: italic;">No rule violations detected in this batch.</div>';
+        } else {
+            listEl.innerHTML = data.top_violations.map(v => `
+                <div style="background: var(--bg-input); padding: 0.6rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
+                    <span style="color: var(--text-primary); font-weight: 500;">⚠️ ${v.rule}</span>
+                    <span style="background: var(--red-soft); color: var(--red); padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 700;">${v.count} breaches</span>
+                </div>
+            `).join('');
+        }
+    }
+
+    // Populate Batch Table
+    renderBatchTable(data.records, 'ALL');
+
+    // Risk Filter Listener
+    const filterSelect = document.getElementById('batchFilterRisk');
+    if (filterSelect) {
+        filterSelect.onchange = (e) => {
+            renderBatchTable(data.records, e.target.value);
+        };
+    }
+
+    // Scroll to results smooth
+    resultsView.scrollIntoView({ behavior: 'smooth' });
+}
+
+function renderBatchTable(records, filterRisk) {
+    const tbody = document.getElementById('batchTableBody');
+    if (!tbody || !records) return;
+
+    let filtered = records;
+    if (filterRisk !== 'ALL') {
+        filtered = records.filter(r => r.risk_level === filterRisk);
+    }
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="9">No records match the selected risk filter.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(r => {
+        const recLower = (r.recommendation || 'APPROVE').toLowerCase();
+        const vBadges = (r.violations && r.violations.length) 
+            ? r.violations.map(v => `<span style="display:inline-block; margin:2px; padding:2px 6px; background:var(--red-soft); color:var(--red); border-radius:4px; font-size:0.7rem; font-weight:600;">${v}</span>`).join('')
+            : '<span style="color:var(--text-muted); font-size:0.75rem;">None</span>';
+
+        return `
+            <tr>
+                <td>${r.id}</td>
+                <td><strong>${r.transaction_id}</strong></td>
+                <td>₦${fmt(r.amount_ngn)}</td>
+                <td><span style="font-weight:600;">${r.channel}</span></td>
+                <td>${r.sender_bank}</td>
+                <td>${r.receiver_bank}</td>
+                <td><strong>${(r.fraud_probability * 100).toFixed(1)}%</strong></td>
+                <td><span class="decision-badge ${recLower}">${r.recommendation}</span></td>
+                <td>${vBadges}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderBatchPieChart(dist) {
+    const ctx = document.getElementById('batchPieChart');
+    if (!ctx) return;
+
+    if (batchPieChartInstance) {
+        batchPieChartInstance.destroy();
+    }
+
+    batchPieChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Low Risk (Safe)', 'Medium Risk', 'High Risk', 'Critical (Blocked)'],
+            datasets: [{
+                data: [dist.LOW || 0, dist.MEDIUM || 0, dist.HIGH || 0, dist.CRITICAL || 0],
+                backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#dc2626'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: { color: '#94a3b8', font: { size: 11 } }
+                }
+            }
+        }
+    });
+}
+
+function exportBatchResultsCsv() {
+    if (!batchData || !batchData.records || !batchData.records.length) {
+        alert('No batch data to export.');
+        return;
+    }
+
+    const headers = ["ID", "Transaction ID", "User ID", "Amount NGN", "Sender Bank", "Receiver Bank", "Channel", "Fraud Probability", "Risk Level", "Recommendation", "Violations"];
+    const rows = batchData.records.map(r => [
+        r.id,
+        r.transaction_id,
+        r.user_id,
+        r.amount_ngn,
+        `"${r.sender_bank}"`,
+        `"${r.receiver_bank}"`,
+        r.channel,
+        r.fraud_probability,
+        r.risk_level,
+        r.recommendation,
+        `"${(r.violations || []).join('; ')}"`
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+        + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Gojo_Sentinel_Batch_Audit_${batchData.file_name || 'report'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}

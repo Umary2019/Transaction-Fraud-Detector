@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +12,7 @@ import json
 import sqlite3
 import hashlib
 import secrets
+import io
 from datetime import datetime
 from typing import Optional, List
 from pathlib import Path
@@ -596,6 +597,190 @@ async def predict_fraud(transaction: TransactionReq):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
+# ─── Batch Prediction Endpoint ──────────────────────────────────────────────────
+@app.post("/api/v1/batch-predict")
+async def batch_predict(file: UploadFile = File(...)):
+    if not MODEL_LOADED:
+        raise HTTPException(
+            status_code=503,
+            detail="Model not loaded. Please train the model first."
+        )
+    if not file.filename.endswith(('.csv', '.txt')):
+        raise HTTPException(status_code=400, detail="Only CSV files are supported.")
+    
+    try:
+        contents = await file.read()
+        df_raw = pd.read_csv(io.BytesIO(contents))
+        if df_raw.empty:
+            raise HTTPException(status_code=400, detail="Uploaded CSV file is empty.")
+        
+        # Standardize column headers (case-insensitive & alias mapping)
+        cols_lower = {str(c).strip().lower(): c for c in df_raw.columns}
+        
+        def find_col(aliases, default=None):
+            for alias in aliases:
+                if alias in cols_lower:
+                    return df_raw[cols_lower[alias]]
+            return default
+
+        n_rows = len(df_raw)
+        
+        # Extract or assign defaults
+        txn_ids = find_col(["transaction_id", "txnid", "id", "reference", "ref"], pd.Series([f"TXN-{i+1:05d}" for i in range(n_rows)]))
+        user_ids = find_col(["user_id", "account_number", "accnum", "customer_id", "userid"], pd.Series([f"U{i+1:05d}" for i in range(n_rows)]))
+        amounts = find_col(["amount_ngn", "amount", "val", "amt", "transaction_amount"], pd.Series([25000.0]*n_rows))
+        sender_banks = find_col(["sender_bank", "origin_bank", "from_bank", "bank"], pd.Series(["GTBank"]*n_rows))
+        receiver_banks = find_col(["receiver_bank", "dest_bank", "to_bank"], pd.Series(["Opay"]*n_rows))
+        channels = find_col(["channel", "txn_type", "type", "payment_channel"], pd.Series(["NIP"]*n_rows))
+        timestamps = find_col(["timestamp", "txndate", "date", "created_at"], pd.Series([datetime.utcnow().isoformat()]*n_rows))
+        
+        # Parse numeric amounts
+        amounts = pd.to_numeric(amounts, errors='coerce').fillna(25000.0)
+        
+        # Build normalized DataFrame for model feature pipeline
+        df_norm = pd.DataFrame({
+            "transaction_id": txn_ids,
+            "user_id": user_ids,
+            "amount_ngn": amounts,
+            "sender_bank": sender_banks,
+            "receiver_bank": receiver_banks,
+            "channel": channels,
+            "timestamp": timestamps,
+            "txn_count_1h": find_col(["txn_count_1h"], pd.Series([0]*n_rows)),
+            "txn_count_24h": find_col(["txn_count_24h"], pd.Series([0]*n_rows)),
+            "amt_sum_24h": find_col(["amt_sum_24h"], pd.Series([0.0]*n_rows))
+        })
+        
+        df_norm = ensure_velocity_features(df_norm)
+        
+        # Model predictions
+        X_proc = preprocessor.transform(df_norm)
+        probabilities = model.predict_proba(X_proc)[:, 1]
+        
+        # Load active Nigerian Banking & Security Rules
+        rules = []
+        if os.path.exists(RULES_PATH):
+            try:
+                with open(RULES_PATH) as f:
+                    rules = [r for r in json.load(f) if r.get("enabled", True)]
+            except Exception:
+                pass
+        
+        results_list = []
+        risk_counts = {"LOW": 0, "MEDIUM": 0, "HIGH": 0, "CRITICAL": 0}
+        channel_stats = {}
+        rule_violation_counts = {}
+        
+        approved_vol = 0.0
+        blocked_vol = 0.0
+        
+        for idx in range(n_rows):
+            t_id = str(df_norm.at[idx, "transaction_id"])
+            u_id = str(df_norm.at[idx, "user_id"])
+            amt = float(df_norm.at[idx, "amount_ngn"])
+            s_bank = str(df_norm.at[idx, "sender_bank"])
+            r_bank = str(df_norm.at[idx, "receiver_bank"])
+            ch = str(df_norm.at[idx, "channel"]).upper()
+            prob = float(probabilities[idx])
+            
+            # Rule compliance checks
+            violations = []
+            forced_action = None
+            
+            # Nigerian Banking Rule 1: USSD Single/Daily Transfer Limit (Max N100,000)
+            if ch == "USSD" and amt > 100000:
+                violations.append("USSD transfer exceeds CBN ₦100,000 daily limit")
+                forced_action = "BLOCK"
+            
+            # Nigerian Banking Rule 2: NIP High-Value Single Transfer Limit (Max N5,000,000)
+            if ch == "NIP" and amt > 5000000:
+                violations.append("NIP transfer exceeds single-txn threshold (₦5,000,000)")
+                forced_action = "DECLINE"
+                
+            # Rule 3: Velocity Spike / Midnight High-Value Spikes
+            if amt >= 1000000 and s_bank.lower() == r_bank.lower():
+                violations.append("Self-transfer high value anomaly")
+            
+            # Custom Rules Check
+            for r in rules:
+                r_type = r.get("type")
+                r_val = r.get("value")
+                r_act = r.get("action", "FLAG")
+                if r_type == "max_amount" and amt > float(r_val):
+                    violations.append(f"Breached rule: {r.get('name')}")
+                    if r_act in ["BLOCK", "DECLINE"]: forced_action = r_act
+                elif r_type == "blocked_bank" and (s_bank.lower() == str(r_val).lower() or r_bank.lower() == str(r_val).lower()):
+                    violations.append(f"Restricted Bank: {r_val}")
+                    if r_act in ["BLOCK", "DECLINE"]: forced_action = r_act
+
+            # Determine final risk & action
+            if forced_action == "BLOCK":
+                risk_level = "CRITICAL"
+                recommendation = "BLOCK"
+                prob = max(prob, 0.95)
+                is_fraud = True
+            elif forced_action == "DECLINE":
+                risk_level = "HIGH"
+                recommendation = "DECLINE"
+                prob = max(prob, 0.75)
+                is_fraud = True
+            else:
+                risk_level, recommendation = get_risk_level(prob)
+                is_fraud = prob >= 0.5
+            
+            risk_counts[risk_level] += 1
+            
+            if recommendation in ["APPROVE"]:
+                approved_vol += amt
+            else:
+                blocked_vol += amt
+
+            # Channel aggregate stats
+            if ch not in channel_stats:
+                channel_stats[ch] = {"total": 0, "blocked": 0, "volume": 0.0}
+            channel_stats[ch]["total"] += 1
+            channel_stats[ch]["volume"] += amt
+            if recommendation in ["DECLINE", "BLOCK"]:
+                channel_stats[ch]["blocked"] += 1
+
+            for v in violations:
+                rule_violation_counts[v] = rule_violation_counts.get(v, 0) + 1
+            
+            results_list.append({
+                "id": idx + 1,
+                "transaction_id": t_id,
+                "user_id": u_id,
+                "amount_ngn": amt,
+                "sender_bank": s_bank,
+                "receiver_bank": r_bank,
+                "channel": ch,
+                "fraud_probability": round(prob, 4),
+                "is_fraud": is_fraud,
+                "risk_level": risk_level,
+                "recommendation": recommendation,
+                "violations": violations
+            })
+
+        # Top rule violations sorted
+        top_violations = [{"rule": k, "count": v} for k, v in sorted(rule_violation_counts.items(), key=lambda x: x[1], reverse=True)]
+
+        return {
+            "file_name": file.filename,
+            "total_transactions": n_rows,
+            "approved_count": risk_counts["LOW"],
+            "review_count": risk_counts["MEDIUM"],
+            "blocked_count": risk_counts["HIGH"] + risk_counts["CRITICAL"],
+            "approved_volume_ngn": round(approved_vol, 2),
+            "blocked_volume_ngn": round(blocked_vol, 2),
+            "risk_distribution": risk_counts,
+            "channel_stats": channel_stats,
+            "top_violations": top_violations,
+            "records": results_list[:500]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Batch processing error: {str(e)}")
 
 # ─── Health Endpoint ────────────────────────────────────────────────────────────
 @app.get("/api/v1/health", response_model=HealthResp)
